@@ -9,6 +9,10 @@ from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
 from apscheduler.executors.pool import ThreadPoolExecutor
 from apscheduler.jobstores.base import JobLookupError
 from models import Customer, engine
+import logging
+
+logging.basicConfig()
+logging.getLogger('apscheduler').setLevel(logging.DEBUG)
 
 with engine.connect() as connection:
     result = connection.execute(text("PRAGMA table_info(customers)"))
@@ -18,7 +22,6 @@ with engine.connect() as connection:
         connection.execute(text("ALTER TABLE customers ADD COLUMN created_at TIMESTAMP"))
 
 Session = scoped_session(sessionmaker(bind=engine))
-
 jobstores = {
     'default': SQLAlchemyJobStore(url='sqlite:///customers.db')
 }
@@ -29,6 +32,17 @@ executors = {
 
 scheduler = BackgroundScheduler(jobstores=jobstores, executors=executors, timezone='UTC')
 scheduler.start()
+
+def send_admin_reminder(customer_id):
+    with Session() as session:
+        customer = session.query(Customer).get(customer_id)
+        
+        if customer is None:
+            messagebox.showerror("Error", "Customer not found.")
+            return
+
+        messagebox.showinfo("Reminder", f"Reminder: Call {customer.name} ({customer.phone})")
+
 
 class CRMApp(tk.Tk):
     def __init__(self):
@@ -99,9 +113,9 @@ class CRMApp(tk.Tk):
                 Session.commit()
 
                 job_id = f'admin_reminder_{new_customer.id}'
-
+                print(f"Adding job for customer {new_customer.id}")
                 scheduler.add_job(
-                    self.send_admin_reminder,
+                    send_admin_reminder,
                     'date',
                     run_date=reminder_time,
                     args=[new_customer.id],
@@ -109,8 +123,6 @@ class CRMApp(tk.Tk):
                     replace_existing=True,
                     misfire_grace_time=604800
                  )
-                return
-
                 
                 messagebox.showinfo("Success", "Customer added and reminder set.")
             except ValueError:
@@ -202,18 +214,6 @@ class CRMApp(tk.Tk):
                 messagebox.showinfo("Search Results", "No customer found with this phone number.")
         finally:
             Session.remove()
-
-    def send_admin_reminder(self, customer_id):
-        pirnt(13)
-        try:
-            print(1)
-            customer = Session.query(Customer).get(customer_id)
-            messagebox.showinfo("Reminder", f"Reminder: Call {customer.name} ({customer.phone})")
-            print(2)
-        finally:
-            Session.remove()
-
-        
 
 if __name__ == "__main__":
     app = CRMApp()
